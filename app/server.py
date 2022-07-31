@@ -87,9 +87,9 @@ class NewsCategoryClassifier:
             ...
         }
         """
-        predictions_probability = self.pipeline.predict_proba([model_input])
-        classes = self.classes
-        return dict(zip(classes, predictions_probability))
+        predictions_probability = self.pipeline.predict_proba([model_input])[0]
+        classes = self.classes_
+        return dict(zip(classes, predictions_probability.tolist())
         
     def predict_label(self, model_input: dict) -> str:
         """
@@ -100,7 +100,7 @@ class NewsCategoryClassifier:
 
         Output format: predicted label for the model input
         """
-        prediction = self.pipeline.predict([model_input.description])
+        prediction = self.pipeline.predict([model_input])
         return prediction[0]
 
 
@@ -118,7 +118,7 @@ def startup_event():
     """
 
     data['model'] = NewsCategoryClassifier(GLOBAL_CONFIG['model'])
-    data['logger'] = open(GLOBAL_CONFIG['service']['log_destination'])
+    data['logger'] = open(GLOBAL_CONFIG['service']['log_destination'], mode="W", encoding="utf-8")
 
     logger.info("Setup completed")
 
@@ -161,7 +161,7 @@ def predict(request: PredictRequest):
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'request': request.dict(),
             'prediction':prediction,
-            'latency': latency
+            'latency': latency * 1000
     }
 
     logger.info(to_log)
