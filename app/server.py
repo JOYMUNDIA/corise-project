@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from loguru import logger
 import joblib
+from datetime import datetime
+import time
 
 from sentence_transformers import SentenceTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -59,7 +61,12 @@ class NewsCategoryClassifier:
         1. Load the sentence transformer model and initialize the `featurizer` of type `TransformerFeaturizer` (Hint: revisit Week 1 Step 4)
         2. Load the serialized model as defined in GLOBAL_CONFIG['model'] into memory and initialize `model`
         """
-        featurizer = config["model"]["featurizer"]["sentence_transformer_model"]
+        sentence_transfomer = SentenceTransformer('sentence-transformers/{model}'.format(
+        model=GLOBAL_CONFIG['model']['featurizer']['sentence_transformer_model']))
+        dim = GLOBAL_CONFIG['model']['featurizer']['sentence_transformer_embedding_dim']
+
+        featurizer = TransformerFeaturizer(dim, sentence_transfomer)
+
         model = joblib.load(GLOBAL_CONFIG["model"]["classifier"]["serialized_model_path"])
         self.pipeline = Pipeline([
             ('transformer_featurizer', featurizer),
@@ -80,12 +87,10 @@ class NewsCategoryClassifier:
             ...
         }
         """
-        predictions = self.pipeline.predict_proba([model_input])
-
-        classes_to_probs = dict(zip(self.classes, predictions[0].tolist()))
+        predictions_probability = self.pipeline.predict_proba([model_input])
+        classes = self.classes
+        return dict(zip(classes, predictions_probability))
         
-        return classes_to_probs
-
     def predict_label(self, model_input: dict) -> str:
         """
         [TO BE IMPLEMENTED]
@@ -95,12 +100,12 @@ class NewsCategoryClassifier:
 
         Output format: predicted label for the model input
         """
-        prediction = self.pipeline.predict([model_input])
+        prediction = self.pipeline.predict([model_input.description])
         return prediction[0]
 
 
 app = FastAPI()
-
+data = {}
 @app.on_event("startup")
 def startup_event():
     """
@@ -113,7 +118,7 @@ def startup_event():
     """
 
     data['model'] = NewsCategoryClassifier(GLOBAL_CONFIG['model'])
-    data['logger'] = open(GLOBAL_CONFIG['service']['log_destination'], "W")
+    data['logger'] = open(GLOBAL_CONFIG['service']['log_destination'])
 
     logger.info("Setup completed")
 
@@ -148,11 +153,15 @@ def predict(request: PredictRequest):
         }
         3. Construct an instance of `PredictResponse` and return
     """
+    start_time = time.time()
+    latency = time.time() - start_time
 
     prediction = data['model'].predict_proba(request.description)
     to_log = {
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'request': request.dict(),
-            'prediction':prediction
+            'prediction':prediction,
+            'latency': latency
     }
 
     logger.info(to_log)
